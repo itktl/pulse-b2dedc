@@ -87,7 +87,7 @@ let data = null;
 let period = (() => { try { return localStorage.getItem("pulse.period") || "day"; } catch { return "day"; } })();
 
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const fmtDate = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const fmtDate = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
 
 function startDate(p, last) {
   const d = new Date(last + "T12:00:00Z");
