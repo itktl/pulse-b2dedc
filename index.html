@@ -191,6 +191,16 @@ function foot() {
   s.textContent = synced ? `Planner last synced ${synced.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` + (syncedDays > 35 ? " — open the planner so new holdings reach this page" : "") : "";
   if (syncedDays > 35) s.className = "warn";
   el.appendChild(s);
+  // the strategy lines come from the Mac mini daily; say so, and say loudly when it has stopped or a book is overdue
+  const ss = data.strategiesSyncedAt ? new Date(data.strategiesSyncedAt) : null;
+  if (ss) {
+    const days = (Date.now() - ss.getTime()) / 864e5;
+    const m = document.createElement("div");
+    m.textContent = `Strategies updated by the Mac mini ${ss.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` + (days > 4 ? " — the mini has stopped updating them" : "");
+    if (days > 4) m.className = "warn";
+    el.appendChild(m);
+  }
+  for (const t of data.overdue || []) { const w = document.createElement("div"); w.className = "warn"; w.textContent = t; el.appendChild(w); }
 }
 
 async function load() {
