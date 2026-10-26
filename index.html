@@ -14,7 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: one column, a period switch, five ruled rows like a quote board, the chart under them */
+/* Layout: on a phone one column - a period switch, ruled rows like a quote board, the chart under them; on a wide
+   screen the board on the left and a large chart beside it */
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --fg: #15201c; --muted: #66736d; --line: #dde3e0;
   --accent: #0f7b5f; --up: #0f7b5f; --down: #c2412d;
@@ -60,8 +61,21 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .val.up { color: var(--up); } .val.down { color: var(--down); } .val.none { color: var(--muted); font-size: 16px; }
 .row.you { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .row.you .val { font-size: 26px; }
-.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px 6px; }
-.chart svg { display: block; width: 100%; height: auto; }
+.chart { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px 6px; }
+.chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.tip { position: absolute; top: 10px; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 8px; font: 11px/1.45 var(--mono); color: var(--fg); box-shadow: 0 2px 10px rgb(0 0 0 / 0.12); white-space: nowrap; }
+.tip .d { color: var(--muted); }
+.tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.scale { position: absolute; left: 14px; top: 12px; font: 10px var(--mono); color: var(--muted); }
+@media (min-width: 960px) {
+  main { max-width: 1440px; padding-inline: 28px; grid-template-columns: minmax(340px, 400px) 1fr; column-gap: 28px; align-items: start; }
+  header, .foot { grid-column: 1 / -1; }
+  .periods, .bal, #board { grid-column: 1; }
+  .chart { grid-column: 2; grid-row: 2 / span 3; position: sticky; top: 16px; padding: 16px 12px 8px; }
+  .chart text { font-size: 11px; }
+  h1 { font-size: 22px; }
+}
 .chart text { fill: var(--muted); font: 10px var(--mono); }
 .foot { font: 12px/1.5 var(--mono); color: var(--muted); display: grid; gap: 2px; }
 .warn { color: var(--down); }
@@ -126,7 +140,7 @@ function window_(series, p) {
   for (let k = 0; k < series.length; k++) { if (series[k][0] <= s) i = k; else break; }
   return i < 0 ? null : series.slice(i);
 }
-const pct = (x) => (x >= 0 ? "+" : "−") + Math.abs(x * 100).toFixed(Math.abs(x) < 0.1 ? 2 : 1) + "%";
+const pct = (x) => (x >= 0 ? "+" : "−") + Math.abs(x * 100).toLocaleString(undefined, { minimumFractionDigits: Math.abs(x) >= 10 ? 0 : Math.abs(x) < 0.1 ? 2 : 1, maximumFractionDigits: Math.abs(x) >= 10 ? 0 : Math.abs(x) < 0.1 ? 2 : 1 }) + "%";
 
 function render() {
   if (!data) return;
@@ -168,32 +182,87 @@ function render() {
 
 function drawChart(wins) {
   const svg = document.getElementById("chart");
-  const W = 360, H = 200, L = 6, R = 44, T = 8, B = 20;
+  const host = svg.parentElement;
+  const wide = innerWidth >= 960;
+  // drawn at the size it is shown, so text stays small and a wide screen gets more detail, not bigger letters
+  const W = Math.max(300, Math.round(host.clientWidth - (wide ? 24 : 16)));
+  const H = wide ? Math.round(Math.max(380, Math.min(W * 0.6, innerHeight - 140))) : Math.round(W * 0.58);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const L = 6, R = 58, T = 10, B = 22;
   const keys = data.lines.map((l) => l.key).filter((k) => !hidden.has(k) && wins[k] && wins[k].length > 1);
+  host.querySelectorAll(".tip,.scale").forEach((e) => e.remove());
   if (!keys.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">nothing to chart yet</text>`; return; }
   const dates = [...new Set(keys.flatMap((k) => wins[k].map((p) => p[0])))].sort();
-  const x = (d) => L + (dates.indexOf(d) / Math.max(1, dates.length - 1)) * (W - L - R);
+  const di = new Map(dates.map((d, i) => [d, i]));
+  const x = (d) => L + (di.get(d) / Math.max(1, dates.length - 1)) * (W - L - R);
   const rel = {};
   let lo = 0, hi = 0;
   for (const k of keys) { const b = wins[k][0][1]; rel[k] = wins[k].map(([d, v]) => [d, v / b - 1]); for (const [, r] of rel[k]) { lo = Math.min(lo, r); hi = Math.max(hi, r); } }
-  const pad = (hi - lo) * 0.08 || 0.01; lo -= pad; hi += pad;
-  const y = (r) => T + (1 - (r - lo) / (hi - lo)) * (H - T - B);
-  const step = niceStep((hi - lo) / 4);
+  // past +150% a straight scale flattens the early years: a log scale, where the same height is the same % move
+  const logs = hi > 1.5;
+  const f = logs ? (r) => Math.log(1 + r) : (r) => r;
+  let flo = f(lo), fhi = f(hi);
+  const pad = (fhi - flo) * 0.06 || 0.01; flo -= pad; fhi += pad;
+  const y = (r) => T + (1 - (f(r) - flo) / (fhi - flo)) * (H - T - B);
+  const pctLabel = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 0.1 ? 1 : 0 }) + "%";
+  let ticks = [];
+  if (logs) {
+    // round percentages: 0, ±10/20/50%, +100%, +200%, +500%, +1,000% ...
+    const cand = [0, -0.1, -0.2, -0.5];
+    for (let e = -1; e <= 5; e++) for (const m of [1, 2, 5]) cand.push(m * Math.pow(10, e));
+    ticks = cand.filter((r) => r > -1 && f(r) >= flo && f(r) <= fhi);
+    if (ticks.length > (wide ? 10 : 6)) ticks = ticks.filter((r) => r <= 0 || Math.log10(r) % 1 === 0);
+  } else {
+    const step = niceStep((fhi - flo) / (wide ? 8 : 4));
+    for (let v = Math.ceil(flo / step) * step; v <= fhi; v += step) ticks.push(v);
+  }
   let g = "";
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+  const kept = [];
+  for (const v of [...ticks].sort((p, q) => (p === 0 ? -1 : q === 0 ? 1 : 0))) { if (kept.every((u) => Math.abs(y(u) - y(v)) >= 16)) kept.push(v); }
+  for (const v of kept) {
     const yy = y(v).toFixed(1);
     g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="${css("--line")}" stroke-width="${Math.abs(v) < 1e-9 ? 1.2 : 0.6}"/>`;
-    g += `<text x="${W - R + 6}" y="${(+yy + 3).toFixed(1)}">${(v * 100).toFixed(step < 0.01 ? 1 : 0)}%</text>`;
+    g += `<text x="${W - R + 6}" y="${(+yy + 3).toFixed(1)}">${pctLabel(v)}</text>`;
   }
-  g += `<text x="${L}" y="${H - 5}">${fmtDate(dates[0])}</text><text x="${W - R}" y="${H - 5}" text-anchor="end">${fmtDate(dates[dates.length - 1])}</text>`;
+  // dates along the bottom: years for long spans, days otherwise
+  const span = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 864e5;
+  const n = Math.max(2, Math.floor((W - L - R) / (span > 700 ? 70 : 90)));
+  const lab = (d) => span > 700 ? d.slice(0, 4) : fmtDate(d);
+  for (let i = 0; i < n; i++) {
+    const d = dates[Math.round(i * (dates.length - 1) / (n - 1))];
+    g += `<text x="${x(d).toFixed(1)}" y="${H - 5}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${lab(d)}</text>`;
+  }
   for (const k of [...keys].reverse()) {
     const pts = rel[k].map(([d, r]) => `${x(d).toFixed(1)},${y(r).toFixed(1)}`).join(" ");
-    const wide = k === "account" ? 2.4 : k === "spy" || k === "qqq" ? 1.2 : 1.8;
-    g += `<polyline points="${pts}" fill="none" stroke="${css(COLORS[k])}" stroke-width="${wide}" stroke-linejoin="round" stroke-linecap="round"${k === "qqq" ? ' stroke-dasharray="3 3"' : ""}/>`;
+    const sw = (k === "account" || k === "launched" ? 2.4 : k === "spy" || k === "qqq" ? 1.2 : 1.8) * (wide ? 0.85 : 1);
+    g += `<polyline points="${pts}" fill="none" stroke="${css(COLORS[k])}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"${k === "qqq" ? ' stroke-dasharray="3 3"' : ""}/>`;
     const [ld, lr] = rel[k][rel[k].length - 1];
-    g += `<circle cx="${x(ld).toFixed(1)}" cy="${y(lr).toFixed(1)}" r="${k === "account" ? 3 : 2.2}" fill="${css(COLORS[k])}"/>`;
+    g += `<circle cx="${x(ld).toFixed(1)}" cy="${y(lr).toFixed(1)}" r="${k === "account" || k === "launched" ? 3 : 2.2}" fill="${css(COLORS[k])}"/>`;
   }
+  g += `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="${css("--muted")}" stroke-width="0.8" visibility="hidden"/>`;
   svg.innerHTML = g;
+  if (logs) { const sc = document.createElement("div"); sc.className = "scale"; sc.textContent = "log scale"; host.appendChild(sc); }
+  // the readout: hover (or drag on a phone) to see every line's growth to that day
+  const names = Object.fromEntries(data.lines.map((l) => [l.key, l.name]));
+  const at = {}; for (const k of keys) at[k] = new Map(rel[k]);
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip);
+  const cross = svg.querySelector("#cross");
+  const show = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(dates.length - 1, Math.round((px - L) / (W - L - R) * (dates.length - 1))));
+    const d = dates[i], xx = x(d);
+    cross.setAttribute("x1", xx); cross.setAttribute("x2", xx); cross.setAttribute("visibility", "visible");
+    const rows = keys.map((k) => { let v = at[k].get(d); if (v === undefined) { for (const [dd, vv] of rel[k]) { if (dd > d) break; v = vv; } } return [k, v]; })
+      .filter(([, v]) => v !== undefined).sort((p, q) => q[1] - p[1]);
+    tip.innerHTML = `<div class="d">${new Date(d + "T12:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}</div>` +
+      rows.map(([k, v]) => `<div><i style="background:var(${COLORS[k]})"></i>${names[k]} ${pctLabel(v)}</div>`).join("");
+    tip.hidden = false;
+    const left = xx / W * r.width + (r.left - host.getBoundingClientRect().left);
+    tip.style.left = (left > host.clientWidth / 2 ? left - tip.offsetWidth - 12 : left + 12) + "px";
+  };
+  const hide = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); };
+  svg.onpointermove = show; svg.onpointerdown = show; svg.onpointerleave = hide; svg.onpointerup = (e) => { if (e.pointerType !== "mouse") hide(); };
 }
 function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const n = raw / p; return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * p; }
 
@@ -311,6 +380,8 @@ document.getElementById("periods").addEventListener("click", (e) => {
   render();
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+let resizing = null;
+addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(render, 150); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 setInterval(load, 5 * 60 * 1000);
 load();
