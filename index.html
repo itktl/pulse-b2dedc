@@ -18,7 +18,7 @@
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --fg: #15201c; --muted: #66736d; --line: #dde3e0;
   --accent: #0f7b5f; --up: #0f7b5f; --down: #c2412d;
-  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7;
+  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7; --c-ln: #c2185b;
   --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -26,12 +26,12 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
   color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
   color-scheme: dark; }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); }
@@ -42,7 +42,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .state { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .state.open .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 22%, transparent); }
-.periods { display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.periods { display: grid; grid-template-columns: repeat(6, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
 .periods button { font: 500 13px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 8px 0; cursor: pointer; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -86,6 +86,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
     <button data-p="ytd">YTD</button>
     <button data-p="1y">1Y</button>
     <button data-p="plan">Plan</button>
+    <button data-p="all">All</button>
   </nav>
   <section class="board bal" id="bal" aria-live="polite" hidden></section>
   <section class="board" id="board" aria-live="polite"></section>
@@ -93,7 +94,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   <footer class="foot" id="foot"></footer>
 </main>
 <script>
-const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk" };
+const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk", launched: "--c-ln" };
 let data = null;
 // LINES SHOWN ON THE CHART: tap a row to hide or show its line; remembered on this device only
 let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem("pulse.hidden") || "[]")); } catch { return new Set(); } })();
@@ -113,6 +114,7 @@ function startDate(p, last) {
   if (p === "1y") { d.setUTCFullYear(d.getUTCFullYear() - 1); return d.toISOString().slice(0, 10); }
   if (p === "ytd") return (d.getUTCFullYear() - 1) + "-12-31";
   if (p === "plan") return data.planStart;
+  if (p === "all") return data.allStart;
   return null;
 }
 // the base is the last close on or before the start; null if the line does not reach back that far
@@ -210,6 +212,8 @@ function foot() {
     `Holdings: account ${fmtDate(data.holdingsOn.account)} · Bargain Hunter ${fmtDate(data.holdingsOn.bargainHunter)} · SPY HUNTER ${fmtDate(data.holdingsOn.spyHunter)}` + (data.holdingsOn.makarios ? ` · Makarios ${fmtDate(data.holdingsOn.makarios)} (Schwab statement)` : ""),
   ];
   el.textContent = "";
+  const ln = data.launched;
+  if (ln) lines.push(`Launched setup: ${Object.entries(ln.sleeves || {}).map(([n, w]) => `${n} ${Math.round(w * 100)}%`).join(" + ")} · simulated to ${fmtDate(ln.simTo)}` + (ln.liveFrom ? `, your real account from ${fmtDate(ln.liveFrom)}` : ", not live yet"));
   for (const t of lines) { const d = document.createElement("div"); d.textContent = t; el.appendChild(d); }
   const s = document.createElement("div");
   s.textContent = synced ? `Planner last synced ${synced.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` + (syncedDays > 35 ? " — open the planner so new holdings reach this page" : "") : "";
