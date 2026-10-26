@@ -18,7 +18,7 @@
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --fg: #15201c; --muted: #66736d; --line: #dde3e0;
   --accent: #0f7b5f; --up: #0f7b5f; --down: #c2412d;
-  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc;
+  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7;
   --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -26,12 +26,12 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0;
   color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0;
   color-scheme: dark; }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); }
@@ -89,7 +89,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   <footer class="foot" id="foot"></footer>
 </main>
 <script>
-const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq" };
+const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk" };
 let data = null;
 let period = (() => { try { return localStorage.getItem("pulse.period") || "day"; } catch { return "day"; } })();
 
@@ -190,7 +190,7 @@ function foot() {
   const syncedDays = synced ? (Date.now() - synced.getTime()) / 864e5 : Infinity;
   const lines = [
     `Prices as of ${ny} New York · checked ${new Date(data.updatedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`,
-    `Holdings: account ${fmtDate(data.holdingsOn.account)} · Bargain Hunter ${fmtDate(data.holdingsOn.bargainHunter)} · SPY HUNTER ${fmtDate(data.holdingsOn.spyHunter)}`,
+    `Holdings: account ${fmtDate(data.holdingsOn.account)} · Bargain Hunter ${fmtDate(data.holdingsOn.bargainHunter)} · SPY HUNTER ${fmtDate(data.holdingsOn.spyHunter)}` + (data.holdingsOn.makarios ? ` · Makarios ${fmtDate(data.holdingsOn.makarios)} (Schwab statement)` : ""),
   ];
   el.textContent = "";
   for (const t of lines) { const d = document.createElement("div"); d.textContent = t; el.appendChild(d); }
