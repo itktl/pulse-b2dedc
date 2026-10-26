@@ -43,7 +43,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .state { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .state.open .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 22%, transparent); }
-.periods { display: grid; grid-template-columns: repeat(9, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.periods { display: grid; grid-template-columns: repeat(10, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
 .periods button { font: 500 13px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 8px 0; cursor: pointer; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -77,7 +77,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   padding: 6px 8px; font: 11px/1.45 var(--mono); color: var(--fg); box-shadow: 0 2px 10px rgb(0 0 0 / 0.12); white-space: nowrap; z-index: 2; }
 .tip .d { color: var(--muted); }
 .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
-@media (max-width: 420px) { .periods button { font-size: 12px; padding: 8px 0; } }
+@media (max-width: 420px) { .periods button { font-size: 11.5px; padding: 8px 0; letter-spacing: -0.01em; } }
 @media (min-width: 960px) {
   main { max-width: 1520px; padding-inline: 32px; grid-template-columns: minmax(360px, 400px) 1fr; column-gap: 28px; align-items: start; }
   header { grid-column: 1 / -1; }
@@ -111,6 +111,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
       <button data-p="1m">1M</button>
       <button data-p="ytd">YTD</button>
       <button data-p="1y">1Y</button>
+      <button data-p="2y">2Y</button>
       <button data-p="3y">3Y</button>
       <button data-p="5y">5Y</button>
       <button data-p="10y">10Y</button>
