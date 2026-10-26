@@ -61,6 +61,12 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .chart text { fill: var(--muted); font: 10px var(--mono); }
 .foot { font: 12px/1.5 var(--mono); color: var(--muted); display: grid; gap: 2px; }
 .warn { color: var(--down); }
+.bal .row { grid-template-columns: 1fr auto; }
+.bal form { display: flex; gap: 8px; margin-top: 8px; }
+.bal input { flex: 1; min-width: 0; font: 15px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.bal input:focus-visible, .bal button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bal button { font: 500 13px var(--sans); color: var(--bg); background: var(--fg); border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.bal .lock { font: 12px var(--mono); color: var(--muted); background: none; padding: 0; margin-left: 8px; text-decoration: underline; }
 @media (prefers-reduced-motion: no-preference) { .val { transition: color .2s; } }
 </style>
 </head>
@@ -77,6 +83,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
     <button data-p="1y">1Y</button>
     <button data-p="plan">Plan</button>
   </nav>
+  <section class="board bal" id="bal" aria-live="polite" hidden></section>
   <section class="board" id="board" aria-live="polite"></section>
   <section class="chart"><svg id="chart" viewBox="0 0 360 200" role="img" aria-label="Growth over the period"></svg></section>
   <footer class="foot" id="foot"></footer>
@@ -203,7 +210,71 @@ function foot() {
   for (const t of data.overdue || []) { const w = document.createElement("div"); w.className = "warn"; w.textContent = t; el.appendChild(w); }
 }
 
+// THE LIVE BALANCE: published encrypted (balance.enc: OpenSSL "enc -pbkdf2" format, AES-256-CBC, key and IV from
+// PBKDF2-SHA256 over the owner's passcode). Unlocked here with Web Crypto; the passcode stays on this device only.
+const PASSKEY = "pulse.pass";
+let balEnc = null, bal = null, balFor = null, balErr = "";
+const getPass = () => { try { return localStorage.getItem(PASSKEY); } catch { return null; } };
+const usd = (x) => x == null ? "–" : "US$" + Number(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+async function unlock(enc, pass) {
+  const raw = Uint8Array.from(atob(enc.data), (c) => c.charCodeAt(0));
+  if (new TextDecoder().decode(raw.slice(0, 8)) !== "Salted__") throw new Error("format");
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveBits"]);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: raw.slice(8, 16), iterations: enc.iter, hash: "SHA-256" }, base, 384));
+  const key = await crypto.subtle.importKey("raw", bits.slice(0, 32), "AES-CBC", false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({ name: "AES-CBC", iv: bits.slice(32, 48) }, key, raw.slice(16));
+  const b = JSON.parse(new TextDecoder().decode(plain));
+  if (b.pulse !== "balance") throw new Error("wrong");
+  return b;
+}
+function renderBal() {
+  const el = document.getElementById("bal");
+  if (!balEnc) { el.hidden = true; return; }
+  el.hidden = false; el.textContent = "";
+  const row = document.createElement("div"); row.className = "row you";
+  const name = document.createElement("span"); name.className = "name"; name.textContent = "Account balance";
+  const sub = document.createElement("span"); sub.className = "sub";
+  const val = document.createElement("span"); val.className = "val";
+  if (bal) {
+    val.textContent = usd(bal.net_liq);
+    sub.textContent = "cash " + usd(bal.cash) + " · as of " + (bal.at_nz || "?").replace(/^\d{4}-/, "").replace(/ NZ[SD]T$/, " NZ") + (bal.stale ? " · STALE" : "");
+    if (bal.stale) sub.className = "sub warn";
+    const lk = document.createElement("button"); lk.className = "lock"; lk.type = "button"; lk.textContent = "lock";
+    lk.addEventListener("click", () => { try { localStorage.removeItem(PASSKEY); } catch {} bal = null; balFor = null; renderBal(); });
+    sub.appendChild(lk);
+    name.appendChild(sub);
+  } else {
+    val.className = "val none"; val.textContent = "locked";
+    const f = document.createElement("form");
+    const i = document.createElement("input"); i.type = "password"; i.autocomplete = "current-password"; i.placeholder = "Passcode"; i.setAttribute("aria-label", "Passcode");
+    const b = document.createElement("button"); b.type = "submit"; b.textContent = "Unlock";
+    f.append(i, b);
+    f.addEventListener("submit", async (e) => {
+      e.preventDefault(); b.disabled = true; b.textContent = "…";
+      try { bal = await unlock(balEnc, i.value); balFor = balEnc.data; balErr = ""; try { localStorage.setItem(PASSKEY, i.value); } catch {} }
+      catch { balErr = "Wrong passcode"; }
+      renderBal();
+    });
+    if (balErr) { sub.className = "sub warn"; sub.textContent = balErr; name.appendChild(sub); }
+    name.appendChild(f);
+  }
+  row.append(name, val); el.appendChild(row);
+}
+async function loadBal() {
+  try {
+    const r = await fetch("balance.enc?t=" + Date.now(), { cache: "no-store" });
+    balEnc = r.ok ? await r.json() : null;
+  } catch { /* offline: keep what is shown */ }
+  const pass = getPass();
+  if (balEnc && pass && balFor !== balEnc.data) {
+    try { bal = await unlock(balEnc, pass); balFor = balEnc.data; balErr = ""; }
+    catch { bal = null; balFor = null; balErr = "Passcode changed: unlock again"; try { localStorage.removeItem(PASSKEY); } catch {} }
+  }
+  renderBal();
+}
+
 async function load() {
+  loadBal();
   try {
     const r = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
