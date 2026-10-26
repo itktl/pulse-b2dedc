@@ -49,6 +49,10 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line); }
 .row:first-child { border-top: 0; }
+#board .row { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+#board .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#board .row.off .name, #board .row.off .val { opacity: 0.4; }
+#board .row.off .swatch { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
 .swatch { width: 10px; height: 10px; border-radius: 2px; }
 .name { font-weight: 500; min-width: 0; }
 .sub { display: block; font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
@@ -91,6 +95,13 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 <script>
 const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk" };
 let data = null;
+// LINES SHOWN ON THE CHART: tap a row to hide or show its line; remembered on this device only
+let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem("pulse.hidden") || "[]")); } catch { return new Set(); } })();
+function toggle(key) {
+  hidden.has(key) ? hidden.delete(key) : hidden.add(key);
+  try { localStorage.setItem("pulse.hidden", JSON.stringify([...hidden])); } catch {}
+  render();
+}
 let period = (() => { try { return localStorage.getItem("pulse.period") || "day"; } catch { return "day"; } })();
 
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -141,6 +152,12 @@ function render() {
     }
     name.appendChild(sub);
     row.append(sw, name, val);
+    const off = hidden.has(line.key);
+    row.classList.toggle("off", off);
+    row.tabIndex = 0; row.setAttribute("role", "button"); row.setAttribute("aria-pressed", String(!off));
+    row.title = (off ? "Show " : "Hide ") + line.name + " on the chart";
+    row.addEventListener("click", () => toggle(line.key));
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(line.key); } });
     board.appendChild(row);
   }
   drawChart(wins);
@@ -150,7 +167,7 @@ function render() {
 function drawChart(wins) {
   const svg = document.getElementById("chart");
   const W = 360, H = 200, L = 6, R = 44, T = 8, B = 20;
-  const keys = data.lines.map((l) => l.key).filter((k) => wins[k] && wins[k].length > 1);
+  const keys = data.lines.map((l) => l.key).filter((k) => !hidden.has(k) && wins[k] && wins[k].length > 1);
   if (!keys.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">nothing to chart yet</text>`; return; }
   const dates = [...new Set(keys.flatMap((k) => wins[k].map((p) => p[0])))].sort();
   const x = (d) => L + (dates.indexOf(d) / Math.max(1, dates.length - 1)) * (W - L - R);
