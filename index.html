@@ -49,7 +49,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mbar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: -8px; }
-.measure { display: inline-grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.measure { display: inline-grid; grid-template-columns: repeat(4, auto); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .measure button { font: 500 12px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 5px 14px; cursor: pointer; }
 .measure button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .measure button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -72,6 +72,9 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .foot { order: 9; }
 .legend-note { margin: -6px 2px 0; font: 12px/1.5 var(--sans); color: var(--muted); }
 .legend-note b { color: var(--fg); font-weight: 500; }
+.drift { margin: -8px 2px 0; font: 12px/1.5 var(--mono); color: var(--muted); }
+.drift b { color: var(--fg); font-weight: 500; }
+.drift.warn, .drift.warn b { color: var(--down); }
 .chart { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px 6px; display: flex; flex-direction: column; }
 .plot { position: relative; height: min(78vw, 460px); }
 .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: crosshair; }
@@ -144,11 +147,13 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
     <div class="mbar"><div class="measure" id="measure" role="group" aria-label="Show growth as">
       <button type="button" data-m="ret" title="Total growth over the period">Return</button>
       <button type="button" data-m="cagr" title="Compound annual growth rate: the steady yearly rate that gives the same result">CAGR</button>
+      <button type="button" data-m="spy" title="How far ahead of (or behind) SPY over the period: the line's growth divided by SPY's">vs SPY</button>
       <button type="button" data-m="mdd" title="Max drawdown: the largest fall from a closing high to a later close within the period">Max DD</button>
     </div></div>
     <section class="board bal" id="bal" aria-live="polite" hidden></section>
     <section class="board" id="board" aria-live="polite"></section>
     <p class="legend-note" id="lnote" hidden></p>
+    <p class="drift" id="drift" hidden></p>
     <section class="board days" id="days" aria-label="Daily moves, last five sessions" hidden></section>
     <footer class="foot" id="foot"></footer>
   </div>
@@ -200,7 +205,7 @@ let yv = null;                      // null: fit to what is shown; else { lo, hi
 // RETURN OR CAGR (owner 2026-10-27): the rows and the readout show total growth, or the compound annual rate that gives
 // it - (end / start) ^ (365.25 / calendar days between the two closes) - 1, for every span, short ones included (owner:
 // "do the math properly"); a short span's yearly rate is large because that is what compounding it for a year gives
-let measure = (() => { try { const m = localStorage.getItem("pulse.measure"); return m === "cagr" || m === "mdd" ? m : "ret"; } catch { return "ret"; } })();
+let measure = (() => { try { const m = localStorage.getItem("pulse.measure"); return m === "cagr" || m === "mdd" || m === "spy" ? m : "ret"; } catch { return "ret"; } })();
 const YEAR_DAYS = 365.25;
 function shownGrowth(ratio, from, to) {
   if (measure !== "cagr") return { r: ratio - 1, note: "" };
@@ -226,8 +231,20 @@ function prepare() {
     for (let i = e + 1; i < D.length; i++) a[i] = NaN;   // a line stops where its record stops
     arr[l.key] = a; first[l.key] = f; last[l.key] = e;
   }
-  P = { D, arr, first, last, n: D.length };
+  // VS SPY (owner 2026-10-28): each line divided by SPY on the same session, so its growth is how far it is ahead of
+  // or behind SPY - a line that only matched SPY reads 0%
+  const spy = arr.spy, rel = {}, rfirst = {}, rlast = {};
+  for (const k in arr) {
+    const a = arr[k], r = new Float64Array(D.length).fill(NaN);
+    let f = -1, e = -1;
+    if (spy) for (let i = 0; i < D.length; i++) { const v = a[i] / spy[i]; if (Number.isFinite(v)) { r[i] = v; if (f < 0) f = i; e = i; } }
+    rel[k] = r; rfirst[k] = f; rlast[k] = e;
+  }
+  P = { D, n: D.length, raw: { arr, first, last }, rel: { arr: rel, first: rfirst, last: rlast } };
+  useMeasure();
 }
+// the chart, rows and readout read P.arr / P.first / P.last: the lines themselves, or the lines over SPY
+function useMeasure() { if (!P) return; const s = measure === "spy" && P.raw.arr.spy ? P.rel : P.raw; P.arr = s.arr; P.first = s.first; P.last = s.last; }
 function lastAtOrBefore(day) { let lo = 0, hi = P.n - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (P.D[m] <= day) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
 const MAK_FROM = "2025-05-16";                                                  // the owner's chosen start
 const MAK_FROM_CLOSE = new Date(Date.parse(MAK_FROM) - 864e5).toISOString().slice(0, 10);   // the close before it
@@ -292,6 +309,29 @@ function legendNote() {
     `Simulated to ${fmtLong(ln.simTo)}` + (ln.liveFrom ? `; from ${fmtLong(ln.liveFrom)} it is your real account.` : "; not live yet.");
   el.hidden = false;
 }
+// LIVE AGAINST THE MODEL (owner 2026-10-28): since the account went live, has it kept up with the simulated split it is
+// meant to follow? The model is each sleeve's own line, weighted as sent and held between trades; it is put back to
+// the split on every trade date the mini reports. Red once the two are DRIFT_PCT apart either way.
+const DRIFT_PCT = 0.005;
+function driftNote() {
+  const el = document.getElementById("drift"), ln = data.launched;
+  const acc = P && P.raw.arr.account;
+  if (!ln || !ln.liveFrom || !ln.sleeves || !acc) { el.hidden = true; return; }
+  const b = lastAtOrBefore(new Date(Date.parse(ln.liveFrom) - 864e5).toISOString().slice(0, 10)), e = P.raw.last.account;
+  const key = Object.fromEntries(data.lines.map((l) => [l.name, l.key]));
+  const legs = Object.entries(ln.sleeves).map(([n, w]) => ({ k: key[n], w })).filter((x) => x.k && P.raw.arr[x.k]);
+  if (b < 0 || e <= b || legs.length !== Object.keys(ln.sleeves).length || Number.isNaN(acc[b])) { el.hidden = true; return; }
+  // trade dates after the start, from the mini's "holdings since" dates: the model is reset to the split there
+  const resets = [...new Set(legs.map((x) => (data.holdingsOn || {})[x.k]).filter((d) => d && d > P.D[b]))].map(lastAtOrBefore).filter((i) => i > b && i <= e).sort((p, q) => p - q);
+  let model = 1, from = b;
+  for (const r of [...resets, e]) { model *= legs.reduce((t, x) => t + x.w * P.raw.arr[x.k][r] / P.raw.arr[x.k][from], 0); from = r; }
+  const live = acc[e] / acc[b], gap = live / model - 1;
+  el.innerHTML = `Live vs model since ${fmtDate(P.D[b])} close: your account <b>${pct(live - 1)}</b>, the ${Object.values(ln.sleeves).sort((p, q) => q - p).map((w) => Math.round(w * 100)).join("/")} model <b>${pct(model - 1)}</b> · ` +
+    `<b>${Math.abs(gap) < 5e-5 ? "level" : (gap > 0 ? pct(gap).slice(1) + " ahead" : pct(gap).slice(1) + " behind")}</b>`;
+  el.classList.toggle("warn", Math.abs(gap) >= DRIFT_PCT);
+  el.title = "Red once the account and the model are " + (DRIFT_PCT * 100) + "% apart";
+  el.hidden = false;
+}
 // THE LAST FIVE SESSIONS (owner 2026-10-28): every line's move from the previous session's close to that session's
 // close, read from its own record only - a day it has no value on, or no value the session before, is left blank
 // (never 0%, never a carried value). Fixed to the latest five sessions whatever the chart is showing.
@@ -325,7 +365,7 @@ function dailyTable() {
 // MAX DRAWDOWN (owner 2026-10-28): the largest fall from a closing high to a later close, both inside the view and
 // from the line's own first close in it. A drop that has not yet regained its high by the view's end says so.
 function maxDD(k, s, e) {
-  const a = P.arr[k];
+  const a = P.raw.arr[k];
   let hi = -Infinity, hiAt = s, dd = 0, peak = s, trough = s;
   for (let i = s; i <= e; i++) {
     const v = a[i]; if (Number.isNaN(v)) continue;
@@ -365,7 +405,8 @@ function updateRows() {
       }
       const { r, note } = shownGrowth(end / base, P.D[ia], P.D[Math.min(ib, P.last[line.key])]);
       val.textContent = pct(r) + (note === "a year" ? "/yr" : ""); val.classList.add(r >= 0 ? "up" : "down");
-      sub.textContent = "since " + when(ia) + " close" + to + (s0 > ia ? " · record from " + when(s0) : "");
+      if (measure === "spy" && line.key === "spy") { val.className = "val none"; val.textContent = "0%"; sub.textContent = "the yardstick"; continue; }
+      sub.textContent = (measure === "spy" ? (r >= 0 ? "ahead of SPY since " : "behind SPY since ") : "since ") + when(ia) + " close" + to + (s0 > ia ? " · record from " + when(s0) : "");
     }
   }
 }
@@ -374,7 +415,7 @@ function render() {
   if (!data) return;
   if (!P || P.src !== data) { prepare(); P.src = data; if (!view || !custom) view = periodView(); else view = clampView(view); }
   document.querySelectorAll("#periods button").forEach((b) => b.setAttribute("aria-pressed", String(!custom && b.dataset.p === period)));
-  buildRows(); rowsFor = ""; legendNote(); dailyTable();
+  buildRows(); rowsFor = ""; legendNote(); driftNote(); dailyTable();
   schedule();
   foot();
 }
@@ -623,7 +664,7 @@ function paintMeasure() { document.querySelectorAll("#measure button").forEach((
 document.getElementById("measure").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   measure = b.dataset.m; try { localStorage.setItem("pulse.measure", measure); } catch {}
-  paintMeasure(); rowsFor = ""; if (P) updateRows(); if (hover) drawHover(hover.x);
+  paintMeasure(); rowsFor = ""; useMeasure(); yv = null; if (P) { updateRows(); schedule(); } if (hover) drawHover(hover.x);
 });
 paintMeasure();
 new ResizeObserver(() => schedule()).observe(plot);
