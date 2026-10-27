@@ -221,16 +221,14 @@ function clampView(v) {
   return { a, b: a + w };
 }
 const shown = () => data.lines.map((l) => l.key).filter((k) => !hidden.has(k));
-// A LINE THAT STARTS INSIDE THE VIEW (Makarios, QQQ, your account on All) joins the chart at SPY's level on its first day,
-// so it can be compared from there; its own row and readout give its growth since that first day
-function refKey(ia) { if (!Number.isNaN(P.arr.spy?.[ia])) return "spy"; return data.lines.map((l) => l.key).find((k) => !Number.isNaN(P.arr[k][ia])) || null; }
+// A LINE THAT STARTS INSIDE THE VIEW (Makarios, QQQ, your account on All) sits at 0% - drawn dotted, it has no record
+// there - until its first day, and grows from 0% from then (owner 2026-10-27); its row and readout give its growth
+// since that first day
 function baseOf(k, ia, i1) {
   const a = P.arr[k];
   if (!Number.isNaN(a[ia])) return a[ia];
   const f = P.first[k];
-  if (f < 0 || f < ia || f > i1) return NaN;
-  const ref = refKey(ia);
-  return ref ? a[f] / (P.arr[ref][f] / P.arr[ref][ia]) : a[f];
+  return f < 0 || f < ia || f > i1 ? NaN : a[f];
 }
 const ownStart = (k, ia) => Math.max(ia, P.first[k]);
 function baseIndex() { return Math.min(P.n - 1, Math.max(0, Math.ceil(view.a - 1e-9))); }
@@ -400,6 +398,10 @@ function draw() {
       flush();
     }
     ctx.stroke();
+    if (P.first[k] > view.a) {                                   // no record yet: a dotted 0% up to its first day
+      ctx.save(); ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.7; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(M.L, Y(f(1))); ctx.lineTo(X(P.first[k]), Y(f(1))); ctx.stroke(); ctx.restore();
+    }
     const e = Math.min(P.last[k], i1);
     if (e >= i0 && e <= view.b) { ctx.setLineDash([]); ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(X(e), Y(f(a[e] / base)), k === "account" || k === "launched" ? 3 : 2.2, 0, 7); ctx.fill(); }
   }
