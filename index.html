@@ -48,7 +48,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mbar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: -8px; }
-.measure { display: inline-grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.measure { display: inline-grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .measure button { font: 500 12px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 5px 14px; cursor: pointer; }
 .measure button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .measure button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -143,6 +143,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
     <div class="mbar"><div class="measure" id="measure" role="group" aria-label="Show growth as">
       <button type="button" data-m="ret" title="Total growth over the period">Return</button>
       <button type="button" data-m="cagr" title="Compound annual growth rate: the steady yearly rate that gives the same result">CAGR</button>
+      <button type="button" data-m="mdd" title="Max drawdown: the largest fall from a closing high to a later close within the period">Max DD</button>
     </div></div>
     <section class="board bal" id="bal" aria-live="polite" hidden></section>
     <section class="board" id="board" aria-live="polite"></section>
@@ -198,7 +199,7 @@ let yv = null;                      // null: fit to what is shown; else { lo, hi
 // RETURN OR CAGR (owner 2026-10-27): the rows and the readout show total growth, or the compound annual rate that gives
 // it - (end / start) ^ (365.25 / calendar days between the two closes) - 1, for every span, short ones included (owner:
 // "do the math properly"); a short span's yearly rate is large because that is what compounding it for a year gives
-let measure = (() => { try { return localStorage.getItem("pulse.measure") === "cagr" ? "cagr" : "ret"; } catch { return "ret"; } })();
+let measure = (() => { try { const m = localStorage.getItem("pulse.measure"); return m === "cagr" || m === "mdd" ? m : "ret"; } catch { return "ret"; } })();
 const YEAR_DAYS = 365.25;
 function shownGrowth(ratio, from, to) {
   if (measure !== "cagr") return { r: ratio - 1, note: "" };
@@ -320,6 +321,21 @@ function dailyTable() {
     `<thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table>`;
   el.hidden = false;
 }
+// MAX DRAWDOWN (owner 2026-10-28): the largest fall from a closing high to a later close, both inside the view and
+// from the line's own first close in it. A drop that has not yet regained its high by the view's end says so.
+function maxDD(k, s, e) {
+  const a = P.arr[k];
+  let hi = -Infinity, hiAt = s, dd = 0, peak = s, trough = s;
+  for (let i = s; i <= e; i++) {
+    const v = a[i]; if (Number.isNaN(v)) continue;
+    if (v > hi) { hi = v; hiAt = i; }
+    const d = v / hi - 1;
+    if (d < dd) { dd = d; peak = hiAt; trough = i; }
+  }
+  let recovered = false;
+  for (let i = trough + 1; i <= e && dd < 0; i++) if (a[i] >= a[peak]) { recovered = true; break; }
+  return { dd, peak, trough, recovered };
+}
 function updateRows() {
   const ia = baseIndex(), ib = endIndex();
   if (rowsFor === ia + ":" + ib) return;
@@ -336,11 +352,18 @@ function updateRows() {
     } else {
       // A LINE WHOSE RECORD STARTS INSIDE THE PERIOD is held at 0% until then, as the chart draws it (owner 2026-10-27),
       // so its yearly rate is over the whole period, like every other row's - not over its own few days
-      const { r, note } = shownGrowth(end / base, P.D[ia], P.D[Math.min(ib, P.last[line.key])]);
-      val.textContent = pct(r) + (note === "a year" ? "/yr" : ""); val.classList.add(r >= 0 ? "up" : "down");
       // the base is the close of the last session on or before the period's start (a year before Mon 26 Oct 2026 is a
       // Sunday, so 1Y runs from Friday 24 Oct 2025's close); the year is named whenever it is not the latest one's
       const when = (i) => P.D[i].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[i]) : fmtDate(P.D[i]);
+      if (measure === "mdd") {
+        const m = maxDD(line.key, s0, Math.min(ib, P.last[line.key]));
+        val.textContent = m.dd < 0 ? pct(m.dd) : "0%"; val.classList.add(m.dd < 0 ? "down" : "up");
+        sub.textContent = m.dd < 0 ? "worst fall " + when(m.peak) + " → " + when(m.trough) + (m.recovered ? "" : " · not yet recovered")
+          : "no fall since " + (s0 > ia ? "its record began " + when(s0) : when(ia) + " close") + to;
+        continue;
+      }
+      const { r, note } = shownGrowth(end / base, P.D[ia], P.D[Math.min(ib, P.last[line.key])]);
+      val.textContent = pct(r) + (note === "a year" ? "/yr" : ""); val.classList.add(r >= 0 ? "up" : "down");
       sub.textContent = "since " + when(ia) + " close" + to + (s0 > ia ? " · record from " + when(s0) : "");
     }
   }
@@ -493,7 +516,7 @@ function drawHover(x) {
   for (const k of geo.keys) {
     const a = P.arr[k], v = a[i]; if (Number.isNaN(v)) continue;
     const r = v / geo.bases[k];
-    const g = shownGrowth(v / a[ownStart(k, geo.ia)], P.D[geo.ia], P.D[i]);
+    const g = measure === "mdd" ? { r: maxDD(k, ownStart(k, geo.ia), i).dd, note: "" } : shownGrowth(v / a[ownStart(k, geo.ia)], P.D[geo.ia], P.D[i]);
     rows.push([k, g.r, g.note === "a year" ? "/yr" : ""]);
     ctx.fillStyle = css(COLORS[k]); ctx.beginPath(); ctx.arc(xx, geo.Y(geo.f(r)), 3, 0, 7); ctx.fill();
   }
