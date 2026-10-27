@@ -276,11 +276,14 @@ function updateRows() {
       val.textContent = "n/a"; val.classList.add("none");
       sub.textContent = P.first[line.key] > ia ? "starts " + fmtLong(P.D[P.first[line.key]]) : "no record in this view";
     } else {
-      const { r, note } = shownGrowth(end / base, P.D[s0], P.D[Math.min(ib, P.last[line.key])]);
+      // A LINE WHOSE RECORD STARTS INSIDE THE PERIOD is held at 0% until then, as the chart draws it (owner 2026-10-27),
+      // so its yearly rate is over the whole period, like every other row's - not over its own few days
+      const { r, note } = shownGrowth(end / base, P.D[ia], P.D[Math.min(ib, P.last[line.key])]);
       val.textContent = pct(r) + (note === "a year" ? "/yr" : ""); val.classList.add(r >= 0 ? "up" : "down");
       // the base is the close of the last session on or before the period's start (a year before Mon 26 Oct 2026 is a
       // Sunday, so 1Y runs from Friday 24 Oct 2025's close); the year is named whenever it is not the latest one's
-      sub.textContent = "since " + (P.D[s0].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[s0]) : fmtDate(P.D[s0])) + " close" + to;
+      const when = (i) => P.D[i].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[i]) : fmtDate(P.D[i]);
+      sub.textContent = "since " + when(ia) + " close" + to + (s0 > ia ? " · record from " + when(s0) : "");
     }
   }
 }
@@ -432,7 +435,7 @@ function drawHover(x) {
   for (const k of geo.keys) {
     const a = P.arr[k], v = a[i]; if (Number.isNaN(v)) continue;
     const r = v / geo.bases[k];
-    const g = shownGrowth(v / a[ownStart(k, geo.ia)], P.D[ownStart(k, geo.ia)], P.D[i]);
+    const g = shownGrowth(v / a[ownStart(k, geo.ia)], P.D[geo.ia], P.D[i]);
     rows.push([k, g.r, g.note === "a year" ? "/yr" : ""]);
     ctx.fillStyle = css(COLORS[k]); ctx.beginPath(); ctx.arc(xx, geo.Y(geo.f(r)), 3, 0, 7); ctx.fill();
   }
