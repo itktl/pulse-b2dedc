@@ -48,7 +48,6 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mbar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: -8px; }
-.mnote { font: 11px var(--mono); color: var(--muted); }
 .measure { display: inline-grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .measure button { font: 500 12px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 5px 14px; cursor: pointer; }
 .measure button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
@@ -125,7 +124,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
       <button data-p="mak" title="Since 16 May 2025">Mak</button>
       <button data-p="all">All</button>
     </nav>
-    <div class="mbar"><span class="mnote" id="mnote" aria-live="polite"></span><div class="measure" id="measure" role="group" aria-label="Show growth as">
+    <div class="mbar"><div class="measure" id="measure" role="group" aria-label="Show growth as">
       <button type="button" data-m="ret" title="Total growth over the period">Return</button>
       <button type="button" data-m="cagr" title="Compound annual growth rate: the steady yearly rate that gives the same result">CAGR</button>
     </div></div>
@@ -179,13 +178,14 @@ let P = null;                       // the prepared calendar and lines
 let view = null;                    // { a, b }: sessions shown (indices into P.D)
 let yv = null;                      // null: fit to what is shown; else { lo, hi, logs } fixed by the reader
 // RETURN OR CAGR (owner 2026-10-27): the rows and the readout show total growth, or the compound annual rate that gives
-// it; a span under a year is not annualised (a month's move scaled to a year says nothing) and says so
+// it - (end / start) ^ (365.25 / calendar days between the two closes) - 1, for every span, short ones included (owner:
+// "do the math properly"); a short span's yearly rate is large because that is what compounding it for a year gives
 let measure = (() => { try { return localStorage.getItem("pulse.measure") === "cagr" ? "cagr" : "ret"; } catch { return "ret"; } })();
 const YEAR_DAYS = 365.25;
 function shownGrowth(ratio, from, to) {
   if (measure !== "cagr") return { r: ratio - 1, note: "" };
   const days = (Date.parse(to) - Date.parse(from)) / 864e5;
-  if (days < YEAR_DAYS - 3) return { r: ratio - 1, note: "under a year: total" };
+  if (!(days > 0)) return { r: ratio - 1, note: "" };                       // one close only: no time has passed
   return { r: Math.pow(ratio, YEAR_DAYS / days) - 1, note: "a year" };
 }
 let custom = false;                 // the reader has zoomed or panned away from the period's view
@@ -267,7 +267,7 @@ function updateRows() {
   if (rowsFor === ia + ":" + ib) return;
   rowsFor = ia + ":" + ib;
   const to = ib < P.n - 1 ? " to " + fmtLong(P.D[ib]) : "";
-  let under = 0; const shortRows = [];
+
   for (const line of data.lines) {
     const { sub, val } = rowEls[line.key], a = P.arr[line.key];
     const s0 = ownStart(line.key, ia), base = s0 <= ib ? a[s0] : NaN, end = a[Math.min(ib, P.last[line.key])];
@@ -281,15 +281,8 @@ function updateRows() {
       // the base is the close of the last session on or before the period's start (a year before Mon 26 Oct 2026 is a
       // Sunday, so 1Y runs from Friday 24 Oct 2025's close); the year is named whenever it is not the latest one's
       sub.textContent = "since " + (P.D[s0].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[s0]) : fmtDate(P.D[s0])) + " close" + to;
-      if (note === "under a year: total") { under++; shortRows.push(sub); }
     }
   }
-  // one note, not one per row: under a year nothing is annualised
-  // when only SOME rows are under a year (your account on Mak), each of those says so itself: a bare % beside "/yr"
-  // figures reads as a yearly rate (owner 2026-10-27); when all are, one note says it for every row
-  const all = under === data.lines.length;
-  if (!all) for (const sub of shortRows) sub.textContent += " · total: under a year, too short to annualise";
-  document.getElementById("mnote").textContent = under && all ? "Under a year: totals, not yearly rates" : "";
 }
 
 function render() {
