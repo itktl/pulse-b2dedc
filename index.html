@@ -122,7 +122,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
       <button data-p="5y">5Y</button>
       <button data-p="10y">10Y</button>
       <button data-p="plan">Plan</button>
-      <button data-p="mak" title="Since Makarios began, 1 May 2025">Mak</button>
+      <button data-p="mak" title="Since 16 May 2025">Mak</button>
       <button data-p="all">All</button>
     </nav>
     <div class="mbar"><span class="mnote" id="mnote" aria-live="polite"></span><div class="measure" id="measure" role="group" aria-label="Show growth as">
@@ -209,11 +209,13 @@ function prepare() {
   P = { D, arr, first, last, n: D.length };
 }
 function lastAtOrBefore(day) { let lo = 0, hi = P.n - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (P.D[m] <= day) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
+const MAK_FROM = "2025-05-16";                                                  // the owner's chosen start
+const MAK_FROM_CLOSE = new Date(Date.parse(MAK_FROM) - 864e5).toISOString().slice(0, 10);   // the close before it
 function periodView() {
   const b = P.n - 1;
   if (period === "day") return { a: Math.max(0, b - 1), b };
-  // MAK: from the close before Makarios's first day (30 Apr 2025, when it was funded), so every line covers 1 May 2025 on
-  if (period === "mak" && P.first.makarios >= 0) return { a: Math.max(0, P.first.makarios - 1), b };
+  // MAK: from 16 May 2025 (owner 2026-10-27), i.e. from the close of the session before it, the same rule as every period
+  if (period === "mak") return { a: Math.max(0, lastAtOrBefore(MAK_FROM_CLOSE)), b };
   const s = startDate(period, P.D[b]);
   return { a: Math.max(0, s ? lastAtOrBefore(s) : 0), b };
 }
