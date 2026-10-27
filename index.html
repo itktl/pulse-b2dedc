@@ -43,7 +43,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .state { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .state.open .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 22%, transparent); }
-.periods { display: grid; grid-template-columns: repeat(10, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.periods { display: grid; grid-template-columns: repeat(11, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
 .periods button { font: 500 13px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 8px 0; cursor: pointer; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -83,7 +83,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   padding: 6px 8px; font: 11px/1.45 var(--mono); color: var(--fg); box-shadow: 0 2px 10px rgb(0 0 0 / 0.12); white-space: nowrap; z-index: 2; }
 .tip .d { color: var(--muted); }
 .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
-@media (max-width: 420px) { .periods button { font-size: 11.5px; padding: 8px 0; letter-spacing: -0.01em; } }
+@media (max-width: 420px) { .periods { padding: 2px; } .periods button { font-size: 11px; padding: 8px 0; letter-spacing: -0.02em; } }
 @media (min-width: 960px) {
   main { max-width: 1520px; padding-inline: 32px; grid-template-columns: minmax(360px, 400px) 1fr; column-gap: 28px; align-items: start; }
   header { grid-column: 1 / -1; }
@@ -122,6 +122,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
       <button data-p="5y">5Y</button>
       <button data-p="10y">10Y</button>
       <button data-p="plan">Plan</button>
+      <button data-p="mak" title="Since Makarios began, 1 May 2025">Mak</button>
       <button data-p="all">All</button>
     </nav>
     <div class="mbar"><span class="mnote" id="mnote" aria-live="polite"></span><div class="measure" id="measure" role="group" aria-label="Show growth as">
@@ -211,6 +212,8 @@ function lastAtOrBefore(day) { let lo = 0, hi = P.n - 1, r = -1; while (lo <= hi
 function periodView() {
   const b = P.n - 1;
   if (period === "day") return { a: Math.max(0, b - 1), b };
+  // MAK: from the close before Makarios's first day (30 Apr 2025, when it was funded), so every line covers 1 May 2025 on
+  if (period === "mak" && P.first.makarios >= 0) return { a: Math.max(0, P.first.makarios - 1), b };
   const s = startDate(period, P.D[b]);
   return { a: Math.max(0, s ? lastAtOrBefore(s) : 0), b };
 }
@@ -545,37 +548,21 @@ document.getElementById("hint").textContent = matchMedia("(pointer: coarse)").ma
   : "Scroll to zoom · drag to pan · scroll on the % axis to zoom it · double-click an axis to reset";
 
 function foot() {
+  // the notes under the rows are gone (owner 2026-10-27); only something that needs attention is shown: prices that
+  // have stopped, the planner or the mini not updating, a book overdue
   const el = document.getElementById("foot");
   const pt = new Date(data.priceTime);
-  const ageMin = (Date.now() - pt.getTime()) / 60000;
-  const open = ageMin < 20;
+  const open = (Date.now() - pt.getTime()) / 60000 < 20;
   document.getElementById("state").classList.toggle("open", open);
   document.getElementById("stateText").textContent = open ? "live" : "market closed";
-  const ny = pt.toLocaleString(undefined, { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" });
-  const synced = data.plannerSyncedAt ? new Date(data.plannerSyncedAt) : null;
-  const syncedDays = synced ? (Date.now() - synced.getTime()) / 864e5 : Infinity;
-  const lines = [
-    `Prices as of ${ny} New York · checked ${new Date(data.updatedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`,
-    `Holdings: account ${fmtDate(data.holdingsOn.account)} · Bargain Hunter ${fmtDate(data.holdingsOn.bargainHunter)} · SPY HUNTER ${fmtDate(data.holdingsOn.spyHunter)}` + (data.holdingsOn.makarios ? ` · Makarios ${fmtDate(data.holdingsOn.makarios)} (Schwab statement)` : ""),
-  ];
   el.textContent = "";
-  const ln = data.launched;
-  if (ln) lines.push(`Launched setup: ${Object.entries(ln.sleeves || {}).map(([n, w]) => `${n} ${Math.round(w * 100)}%`).join(" + ")} · simulated to ${fmtDate(ln.simTo)}` + (ln.liveFrom ? `, your real account from ${fmtDate(ln.liveFrom)}` : ", not live yet"));
-  for (const t of lines) { const d = document.createElement("div"); d.textContent = t; el.appendChild(d); }
-  const s = document.createElement("div");
-  s.textContent = synced ? `Planner last synced ${synced.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` + (syncedDays > 35 ? " — open the planner so new holdings reach this page" : "") : "";
-  if (syncedDays > 35) s.className = "warn";
-  el.appendChild(s);
-  // the strategy lines come from the Mac mini daily; say so, and say loudly when it has stopped or a book is overdue
+  const warn = (t) => { const d = document.createElement("div"); d.className = "warn"; d.textContent = t; el.appendChild(d); };
+  const synced = data.plannerSyncedAt ? new Date(data.plannerSyncedAt) : null;
+  if (synced && (Date.now() - synced.getTime()) / 864e5 > 35) warn(`Planner last synced ${synced.toLocaleDateString(undefined, { day: "numeric", month: "short" })} — open the planner so new holdings reach this page`);
   const ss = data.strategiesSyncedAt ? new Date(data.strategiesSyncedAt) : null;
-  if (ss) {
-    const days = (Date.now() - ss.getTime()) / 864e5;
-    const m = document.createElement("div");
-    m.textContent = `Strategies updated by the Mac mini ${ss.toLocaleDateString(undefined, { day: "numeric", month: "short" })}` + (days > 4 ? " — the mini has stopped updating them" : "");
-    if (days > 4) m.className = "warn";
-    el.appendChild(m);
-  }
-  for (const t of data.overdue || []) { const w = document.createElement("div"); w.className = "warn"; w.textContent = t; el.appendChild(w); }
+  if (ss && (Date.now() - ss.getTime()) / 864e5 > 4) warn(`Strategies last updated by the Mac mini ${ss.toLocaleDateString(undefined, { day: "numeric", month: "short" })} — the mini has stopped updating them`);
+  for (const t of data.overdue || []) warn(t);
+  el.hidden = !el.childElementCount;
 }
 
 // THE LIVE BALANCE: published encrypted (balance.enc: OpenSSL "enc -pbkdf2" format, AES-256-CBC, key and IV from
