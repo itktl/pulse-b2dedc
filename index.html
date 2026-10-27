@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Portfolio Pulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: on a phone one column - a period switch, ruled rows like a quote board, the chart, the notes; on a wide
    screen the switch, rows and notes on the left and a chart filling the screen's height beside them */
@@ -115,6 +115,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .days col.n { width: 34%; }
 .days .up { color: var(--up); } .days .down { color: var(--down); } .days .none { color: var(--muted); }
 .days tr.off td { opacity: 0.4; }
+.days td.best { font-weight: 700; }
 @media (max-width: 420px) { .days { padding-inline: 10px; } .days table { font-size: 11px; } .days col.n { width: 30%; } }
 @media (prefers-reduced-motion: no-preference) { .val { transition: color .2s; } }
 </style>
@@ -300,13 +301,17 @@ function dailyTable() {
   const cols = D.slice(Math.max(1, D.length - N));
   const own = Object.fromEntries(data.lines.map((l) => [l.key, new Map(l.series)]));
   const head = cols.map((d) => `<th>${fmtDate(d)}</th>`).join("");
-  const body = data.lines.map((l) => {
-    const m = own[l.key];
-    const cells = cols.map((d) => {
-      const prev = D[D.indexOf(d) - 1], a = m.get(prev), b = m.get(d);
-      if (!(a > 0) || !(b > 0)) return `<td class="none" title="no value for ${l.name} on ${fmtLong(a > 0 ? d : prev)}">–</td>`;
-      const r = b / a - 1;
-      return `<td class="${r >= 0 ? "up" : "down"}">${pct2(r)}</td>`;
+  const moves = data.lines.map((l) => cols.map((d) => {
+    const prev = D[D.indexOf(d) - 1], a = own[l.key].get(prev), b = own[l.key].get(d);
+    return a > 0 && b > 0 ? { r: b / a - 1 } : { gap: fmtLong(a > 0 ? d : prev) };
+  }));
+  // each session's best move is bold (owner 2026-10-28); judged on the figure shown, so a tie bolds both
+  const best = cols.map((_, j) => Math.max(...moves.map((row) => row[j].gap ? -Infinity : +pct2(row[j].r).replace("−", "-").replace("%", ""))));
+  const body = data.lines.map((l, li) => {
+    const cells = moves[li].map((c, j) => {
+      if (c.gap) return `<td class="none" title="no value for ${l.name} on ${c.gap}">–</td>`;
+      const top = +pct2(c.r).replace("−", "-").replace("%", "") === best[j];
+      return `<td class="${c.r >= 0 ? "up" : "down"}${top ? " best" : ""}">${pct2(c.r)}</td>`;
     }).join("");
     const esc = l.name.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     return `<tr class="${hidden.has(l.key) ? "off" : ""}"><td title="${esc}"><i style="background:var(${COLORS[l.key]})"></i>${esc}</td>${cells}</tr>`;
