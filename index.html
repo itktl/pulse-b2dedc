@@ -19,6 +19,7 @@
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --fg: #15201c; --muted: #66736d; --line: #dde3e0;
   --accent: #0f7b5f; --up: #0f7b5f; --down: #c2412d;
+  --axis: #3f4a45;
   --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7; --c-ln: #c2185b;
   --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -28,12 +29,12 @@
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
   --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
-  color-scheme: dark; } }
+  --axis: #b9c5c0; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
   --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
-  color-scheme: dark; }
+  --axis: #b9c5c0; color-scheme: dark; }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 var(--sans); -webkit-font-smoothing: antialiased; }
@@ -209,7 +210,7 @@ function shownGrowth(ratio, from, to) {
 }
 let custom = false;                 // the reader has zoomed or panned away from the period's view
 let rowEls = {};
-const M = { L: 8, R: 64, T: 8, B: 24 };
+const M = { L: 8, R: 72, T: 10, B: 28 };
 
 function prepare() {
   const set = new Set();
@@ -394,7 +395,7 @@ function draw() {
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  const wide = innerWidth >= 960, font = (wide ? 11 : 10) + "px " + css("--mono");
+  const wide = innerWidth >= 960, font = (wide ? 13 : 12) + "px " + css("--mono");   // axis labels: legible at a glance (owner 2026-10-28)
   const pw = W - M.L - M.R, ph = H - M.T - M.B;
   const ia = baseIndex(), i0 = Math.max(0, Math.floor(view.a)), i1 = Math.min(P.n - 1, Math.ceil(view.b));
   const bases = {};
@@ -403,7 +404,7 @@ function draw() {
   const X = (i) => M.L + (i - view.a) / (view.b - view.a) * pw;
   updateRows();
   const muted = css("--muted"), lineC = css("--line");
-  ctx.font = font; ctx.fillStyle = muted;
+  ctx.font = font; ctx.fillStyle = css("--axis");
   if (!keys.length) {
     ctx.textAlign = "center"; ctx.fillText("nothing to chart in this view", W / 2, H / 2);
     geo = null; document.getElementById("scale").textContent = ""; return;
