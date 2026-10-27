@@ -267,7 +267,7 @@ function updateRows() {
   if (rowsFor === ia + ":" + ib) return;
   rowsFor = ia + ":" + ib;
   const to = ib < P.n - 1 ? " to " + fmtLong(P.D[ib]) : "";
-  let under = 0;
+  let under = 0; const shortRows = [];
   for (const line of data.lines) {
     const { sub, val } = rowEls[line.key], a = P.arr[line.key];
     const s0 = ownStart(line.key, ia), base = s0 <= ib ? a[s0] : NaN, end = a[Math.min(ib, P.last[line.key])];
@@ -281,11 +281,15 @@ function updateRows() {
       // the base is the close of the last session on or before the period's start (a year before Mon 26 Oct 2026 is a
       // Sunday, so 1Y runs from Friday 24 Oct 2025's close); the year is named whenever it is not the latest one's
       sub.textContent = "since " + (P.D[s0].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[s0]) : fmtDate(P.D[s0])) + " close" + to;
-      if (note === "under a year: total") under++;
+      if (note === "under a year: total") { under++; shortRows.push(sub); }
     }
   }
   // one note, not one per row: under a year nothing is annualised
-  document.getElementById("mnote").textContent = under ? (under === data.lines.length ? "Under a year: total shown" : "Under a year: total shown for some") : "";
+  // when only SOME rows are under a year (your account on Mak), each of those says so itself: a bare % beside "/yr"
+  // figures reads as a yearly rate (owner 2026-10-27); when all are, one note says it for every row
+  const all = under === data.lines.length;
+  if (!all) for (const sub of shortRows) sub.textContent += " · total: under a year, too short to annualise";
+  document.getElementById("mnote").textContent = under && all ? "Under a year: totals, not yearly rates" : "";
 }
 
 function render() {
