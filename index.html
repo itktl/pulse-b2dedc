@@ -91,7 +91,8 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .chart-bar .cmode button { border: 0; border-radius: 5px; padding: 2px 9px; }
 .chart-bar .cmode button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 /* THE YEARS TABLE (owner 2026-10-29): each calendar year's return per line, scrolling inside the panel, never the page */
-.years { overflow: auto; max-height: min(110vw, 620px); padding: 0 6px; }
+.years { overflow: auto; max-height: min(110vw, 620px); padding: 0 6px; min-width: 0; }
+main > * { min-width: 0; }   /* a wide table scrolls inside its panel; a grid item would otherwise grow and scroll the page */
 .years table { border-collapse: collapse; font: 12px/1.3 var(--mono); font-variant-numeric: tabular-nums; min-width: 100%; }
 .years th { font: 500 11px var(--sans); color: var(--muted); text-align: right; padding: 4px 8px 6px; white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
 .years th i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
