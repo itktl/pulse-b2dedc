@@ -86,6 +86,20 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .chart-bar button { font: 10px var(--mono); color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
 .chart-bar button[hidden] { display: none; }
 .hint { padding: 6px 6px 0; font: 10px var(--mono); color: var(--muted); }
+.cbtns { display: inline-flex; gap: 8px; align-items: center; }
+.cmode { display: inline-grid; grid-template-columns: auto auto; border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
+.chart-bar .cmode button { border: 0; border-radius: 5px; padding: 2px 9px; }
+.chart-bar .cmode button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+/* THE YEARS TABLE (owner 2026-10-29): each calendar year's return per line, scrolling inside the panel, never the page */
+.years { overflow: auto; max-height: min(110vw, 620px); padding: 0 6px; }
+.years table { border-collapse: collapse; font: 12px/1.3 var(--mono); font-variant-numeric: tabular-nums; min-width: 100%; }
+.years th { font: 500 11px var(--sans); color: var(--muted); text-align: right; padding: 4px 8px 6px; white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
+.years th i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+.years td { text-align: right; padding: 6px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+.years th:first-child, .years td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); padding-left: 0; }
+.years td.up { color: var(--up); } .years td.down { color: var(--down); } .years td.none { color: var(--muted); }
+.years td.best { font-weight: 700; } .years td.part { font-style: italic; }
+.years caption { caption-side: bottom; text-align: left; font: 10px var(--mono); color: var(--muted); padding: 8px 0 2px; }
 .tip { position: absolute; top: 8px; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   padding: 6px 8px; font: 11px/1.45 var(--mono); color: var(--fg); box-shadow: 0 2px 10px rgb(0 0 0 / 0.12); white-space: nowrap; z-index: 2; }
 .tip .d { color: var(--muted); }
@@ -97,6 +111,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   .side { display: flex; flex-direction: column; gap: 16px; grid-column: 1; }
   .foot { order: 0; padding: 2px 4px 0; }
   .chart { grid-column: 2; position: sticky; top: 16px; height: calc(100vh - 96px); min-height: 560px; padding: 14px 10px 8px; }
+  .years { flex: 1; max-height: none; }
   .plot { flex: 1; height: auto; }
   .chart-bar, .hint { font-size: 11px; }
   h1 { font-size: 22px; }
@@ -162,11 +177,12 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
     <footer class="foot" id="foot"></footer>
   </div>
   <section class="chart">
-    <div class="chart-bar"><span id="scale"></span><button type="button" id="reset" hidden>Reset view</button></div>
+    <div class="chart-bar"><span id="scale"></span><span class="cbtns"><button type="button" id="reset" hidden>Reset view</button><span class="cmode" id="cmode" role="group" aria-label="Show as"><button type="button" data-c="chart">Chart</button><button type="button" data-c="years">Years</button></span></span></div>
     <div class="plot" id="plot">
       <canvas id="cv" tabindex="0" role="img" aria-label="Growth over the period. Scroll or pinch to zoom, drag to pan, double-click an axis to reset."></canvas>
       <canvas id="ov" aria-hidden="true" style="pointer-events:none"></canvas>
     </div>
+    <div class="years" id="years" hidden></div>
     <div class="hint" id="hint"></div>
   </section>
 </main>
@@ -450,9 +466,56 @@ const cv = document.getElementById("cv"), ov = document.getElementById("ov"), pl
 let geo = null;                    // what the last draw used, for the pointer
 function fit(c, w, h, dpr) { if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); } }
 
+// CHART OR YEARS (owner 2026-10-29): the same lines, period and hidden rows, as a chart or as each calendar year's return
+let cmode = (() => { try { return localStorage.getItem("pulse.cmode") === "years" ? "years" : "chart"; } catch { return "chart"; } })();
+function paintCmode() {
+  document.querySelectorAll("#cmode button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.c === cmode)));
+  document.getElementById("plot").hidden = cmode === "years"; document.getElementById("hint").hidden = cmode === "years";
+  document.getElementById("years").hidden = cmode !== "years";
+}
+document.getElementById("cmode").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  cmode = b.dataset.c; try { localStorage.setItem("pulse.cmode", cmode); } catch {}
+  paintCmode(); schedule();
+});
+// each year's return: its last close over the year before's last close; a line's first year, and a year the period starts
+// part-way into, from its first close in the period (shown in italics, with the date); the current year to date
+function yearReturns(series, from, to) {
+  const s = series.filter(([d, v]) => d >= from && d <= to && v > 0);
+  if (!s.length) return new Map();
+  const out = new Map(); let base = s[0], baseIsYearEnd = false, cur = null;
+  for (let i = 0; i < s.length; i++) {
+    const [d, v] = s[i], y = d.slice(0, 4), last = i + 1 === s.length || s[i + 1][0].slice(0, 4) !== y;
+    if (!last) continue;
+    out.set(y, { r: v / base[1] - 1, from: baseIsYearEnd ? null : base[0], to: d });
+    base = s[i]; baseIsYearEnd = true;
+  }
+  return out;
+}
+function yearsTable() {
+  const el = document.getElementById("years");
+  const from = P.D[Math.max(0, Math.floor(view.a))], to = P.D[Math.min(P.n - 1, Math.ceil(view.b))];
+  const lines = data.lines.filter((l) => !hidden.has(l.key));
+  const per = lines.map((l) => yearReturns(l.series, from, to));
+  const years = [...new Set(per.flatMap((m) => [...m.keys()]))].sort().reverse();
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const head = lines.map((l) => `<th title="${esc(l.name)}"><i style="background:var(${COLORS[l.key]})"></i>${esc(l.name.replace(/ [0-9a-f]{8}$/, ""))}</th>`).join("");
+  const thisYear = to.slice(0, 4);
+  const body = years.map((y) => {
+    const vals = per.map((m) => m.get(y));
+    const best = Math.max(...vals.map((v) => (v ? +pct(v.r).replace("−", "-").replace(/[%,]/g, "") : -Infinity)));
+    const cells = vals.map((v) => !v ? `<td class="none">–</td>`
+      : `<td class="${v.r >= 0 ? "up" : "down"}${v.from ? " part" : ""}${+pct(v.r).replace("−", "-").replace(/[%,]/g, "") === best ? " best" : ""}"${v.from ? ` title="from ${fmtLong(v.from)}"` : ""}>${pct(v.r)}</td>`).join("");
+    return `<tr><td>${y}${y === thisYear && to.slice(5) < "12-31" ? " YTD" : ""}</td>${cells}</tr>`;
+  }).join("");
+  el.innerHTML = lines.length ? `<table><thead><tr><th>Year</th>${head}</tr></thead><tbody>${body}</tbody><caption>Each calendar year's return, close to close, in the period shown. Italic: from a line's first close in the period (hover for the date). Bold: the year's best.</caption></table>`
+    : `<p class="hint">Every line is hidden: tap a row to show it.</p>`;
+}
+
 function draw() {
   queued = false;
   if (!P) return;
+  if (cmode === "years") { yearsTable(); return; }
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const W = plot.clientWidth, H = plot.clientHeight;
   if (W < 50 || H < 50) return;
@@ -831,6 +894,7 @@ document.getElementById("periods").addEventListener("click", (e) => {
   render();
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+paintCmode();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 setInterval(load, 5 * 60 * 1000);
 load();
