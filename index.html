@@ -51,7 +51,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .periods button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .periods button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mbar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: -8px; }
-.measure { display: inline-grid; grid-template-columns: repeat(4, auto); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.measure { display: inline-grid; grid-template-columns: repeat(5, auto); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .measure button { font: 500 12px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 5px 14px; cursor: pointer; }
 .measure button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .measure button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -151,6 +151,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
       <button type="button" data-m="cagr" title="Compound annual growth rate: the steady yearly rate that gives the same result">CAGR</button>
       <button type="button" data-m="spy" title="How far ahead of (or behind) SPY over the period: the line's growth divided by SPY's">vs SPY</button>
       <button type="button" data-m="mdd" title="Max drawdown: the largest fall from a closing high to a later close within the period">Max DD</button>
+      <button type="button" data-m="mar" title="MAR ratio: the yearly growth rate (CAGR) over the period divided by its max drawdown - return earned for each point of the worst fall">MAR</button>
     </div></div>
     <section class="board bal" id="bal" aria-live="polite" hidden></section>
     <section class="board" id="board" aria-live="polite"></section>
@@ -211,7 +212,7 @@ let yv = null;                      // null: fit to what is shown; else { lo, hi
 // RETURN OR CAGR (owner 2026-10-27): the rows and the readout show total growth, or the compound annual rate that gives
 // it - (end / start) ^ (365.25 / calendar days between the two closes) - 1, for every span, short ones included (owner:
 // "do the math properly"); a short span's yearly rate is large because that is what compounding it for a year gives
-let measure = (() => { try { const m = localStorage.getItem("pulse.measure"); return m === "cagr" || m === "mdd" || m === "spy" ? m : "ret"; } catch { return "ret"; } })();
+let measure = (() => { try { const m = localStorage.getItem("pulse.measure"); return m === "cagr" || m === "mdd" || m === "spy" || m === "mar" ? m : "ret"; } catch { return "ret"; } })();
 const YEAR_DAYS = 365.25;
 function shownGrowth(ratio, from, to) {
   if (measure !== "cagr") return { r: ratio - 1, note: "" };
@@ -370,6 +371,15 @@ function dailyTable() {
 }
 // MAX DRAWDOWN (owner 2026-10-28): the largest fall from a closing high to a later close, both inside the view and
 // from the line's own first close in it. A drop that has not yet regained its high by the view's end says so.
+// MAR RATIO (owner 2026-10-29): the line's CAGR from the close at `from` (index s, its own start inside the period) to e,
+// over its max drawdown in the same span; null when it never fell (no ratio to give)
+function marRatio(k, s, e, fromIdx) {
+  const a = P.raw.arr[k], m = maxDD(k, s, e);
+  const days = (Date.parse(P.D[e]) - Date.parse(P.D[fromIdx])) / 864e5;
+  if (!(days > 0) || !(m.dd < 0)) return { mar: null, cagr: NaN, dd: m.dd };
+  const cagr = Math.pow(a[e] / a[s], YEAR_DAYS / days) - 1;
+  return { mar: cagr / -m.dd, cagr, dd: m.dd };
+}
 function maxDD(k, s, e) {
   const a = P.raw.arr[k];
   let hi = -Infinity, hiAt = s, dd = 0, peak = s, trough = s;
@@ -402,6 +412,13 @@ function updateRows() {
       // the base is the close of the last session on or before the period's start (a year before Mon 26 Oct 2026 is a
       // Sunday, so 1Y runs from Friday 24 Oct 2025's close); the year is named whenever it is not the latest one's
       const when = (i) => P.D[i].slice(0, 4) !== P.D[ib].slice(0, 4) ? fmtLong(P.D[i]) : fmtDate(P.D[i]);
+      if (measure === "mar") {
+        const m = marRatio(line.key, s0, Math.min(ib, P.last[line.key]), ia);
+        if (m.mar === null) { val.textContent = "n/a"; val.classList.add("none"); sub.textContent = "no fall to measure against since " + when(ia) + " close" + to; continue; }
+        val.textContent = m.mar.toFixed(2); val.classList.add(m.mar >= 0 ? "up" : "down");
+        sub.textContent = `CAGR ${pct(m.cagr)}/yr ÷ worst fall ${pct(-m.dd).replace("+", "")} since ` + when(ia) + " close" + to;
+        continue;
+      }
       if (measure === "mdd") {
         const m = maxDD(line.key, s0, Math.min(ib, P.last[line.key]));
         val.textContent = m.dd < 0 ? pct(m.dd) : "0%"; val.classList.add(m.dd < 0 ? "down" : "up");
@@ -567,12 +584,13 @@ function drawHover(x) {
   for (const k of geo.keys) {
     const a = P.arr[k], v = a[i]; if (Number.isNaN(v)) continue;
     const r = v / geo.bases[k];
-    const g = measure === "mdd" ? { r: maxDD(k, ownStart(k, geo.ia), i).dd, note: "" } : shownGrowth(v / a[ownStart(k, geo.ia)], P.D[geo.ia], P.D[i]);
-    rows.push([k, g.r, g.note === "a year" ? "/yr" : ""]);
+    const g = measure === "mdd" ? { r: maxDD(k, ownStart(k, geo.ia), i).dd, note: "" }
+      : measure === "mar" ? { r: marRatio(k, ownStart(k, geo.ia), i, geo.ia).mar, note: "ratio" } : shownGrowth(v / a[ownStart(k, geo.ia)], P.D[geo.ia], P.D[i]);
+    rows.push([k, g.r === null ? -Infinity : g.r, g.note === "a year" ? "/yr" : "", g.note === "ratio"]);
     ctx.fillStyle = css(COLORS[k]); ctx.beginPath(); ctx.arc(xx, geo.Y(geo.f(r)), 3, 0, 7); ctx.fill();
   }
   rows.sort((p, q) => q[1] - p[1]);
-  tip.innerHTML = `<div class="d">${fmtLong(P.D[i])}</div>` + rows.map(([k, r, u]) => `<div><i style="background:var(${COLORS[k]})"></i>${names[k]} ${pct(r)}${u}</div>`).join("");
+  tip.innerHTML = `<div class="d">${fmtLong(P.D[i])}</div>` + rows.map(([k, r, u, ratio]) => `<div><i style="background:var(${COLORS[k]})"></i>${names[k]} ${ratio ? (r === -Infinity ? "n/a" : r.toFixed(2)) : pct(r) + u}</div>`).join("");
   tip.hidden = false;
   tip.style.left = (xx > geo.W / 2 ? xx - tip.offsetWidth - 14 : xx + 14) + "px";
 }
