@@ -192,7 +192,11 @@ function startDate(p, last) {
   return null;
 }
 const pct = (x) => (x >= 0 ? "+" : "−") + Math.abs(x * 100).toLocaleString(undefined, { minimumFractionDigits: Math.abs(x) >= 10 ? 0 : Math.abs(x) < 0.1 ? 2 : 1, maximumFractionDigits: Math.abs(x) >= 10 ? 0 : Math.abs(x) < 0.1 ? 2 : 1 }) + "%";
-const pctTick = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 0.1 ? 1 : 0 }) + "%";
+// dp: decimals to print; the linear scale passes its step's (`stepDecimals`), so neighbouring ticks never share a label
+const pctTick = (v, dp) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toLocaleString(undefined, dp === undefined
+  ? { maximumFractionDigits: Math.abs(v) < 0.1 ? 1 : 0 } : { minimumFractionDigits: dp, maximumFractionDigits: dp }) + "%";
+// the fewest decimals that tell ticks one `step` apart (a fraction: 0.0005 = 0.05% -> 2; 0.002 -> 1; 0.01 -> 0)
+const stepDecimals = (step) => Math.max(0, Math.ceil(-Math.log10(step * 100) - 1e-9));
 
 // ─── THE CHART ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // Every line is laid on one calendar of sessions (P.D) as a Float64Array, so a view is just two numbers - the first and
@@ -466,23 +470,26 @@ function draw() {
   const f = logs ? (v) => Math.log(v) : (v) => v - 1;      // v: value over the base (1 = no change)
   const Y = (fv) => M.T + (1 - (fv - flo) / (fhi - flo)) * ph;
   // horizontal lines and their labels
-  let ticks = [];
+  let ticks = [], dp;
   if (logs) {
     const cand = [0, -0.1, -0.2, -0.3, -0.5, -0.7];
     for (let e = -1; e <= 6; e++) for (const m of [1, 2, 5]) cand.push(m * Math.pow(10, e));
     ticks = cand.filter((r) => Math.log(1 + r) >= flo && Math.log(1 + r) <= fhi).map((r) => [r, Math.log(1 + r)]);
   } else {
     const step = niceStep((fhi - flo) / Math.max(3, Math.floor(ph / 70)));
+    dp = stepDecimals(step);
     for (let v = Math.ceil(flo / step) * step; v <= fhi + 1e-12; v += step) ticks.push([Math.abs(v) < 1e-12 ? 0 : v, v]);
   }
   const kept = [];
-  for (const t of ticks.sort((p, q) => (p[0] === 0 ? -1 : q[0] === 0 ? 1 : 0))) if (kept.every((u) => Math.abs(Y(u[1]) - Y(t[1])) >= 18)) kept.push(t);
+  // a tick is kept only if it has room AND its own label: two lines may never read the same number
+  for (const t of ticks.sort((p, q) => (p[0] === 0 ? -1 : q[0] === 0 ? 1 : 0)))
+    if (kept.every((u) => Math.abs(Y(u[1]) - Y(t[1])) >= 18 && pctTick(u[0], dp) !== pctTick(t[0], dp))) kept.push(t);
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
   for (const [r, fv] of kept) {
     const yy = Math.round(Y(fv)) + 0.5;
     ctx.strokeStyle = lineC; ctx.lineWidth = r === 0 ? 1.2 : 0.6;
     ctx.beginPath(); ctx.moveTo(M.L, yy); ctx.lineTo(W - M.R, yy); ctx.stroke();
-    ctx.fillText(pctTick(r), W - M.R + 6, yy);
+    ctx.fillText(pctTick(r, dp), W - M.R + 6, yy);
   }
   // dates along the bottom, spaced for the width; years, months or days as the span suits
   const days = (Date.parse(P.D[i1]) - Date.parse(P.D[i0])) / 864e5;
