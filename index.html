@@ -20,7 +20,7 @@
   --bg: #f3f5f4; --surface: #ffffff; --fg: #15201c; --muted: #66736d; --line: #dde3e0;
   --accent: #0f7b5f; --up: #0f7b5f; --down: #c2412d;
   --axis: #3f4a45;
-  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7; --c-ln: #c2185b;
+  --c-account: #0f7b5f; --c-sh: #2f5fd0; --c-bh: #b7791f; --c-spy: #8a948f; --c-qqq: #b9c0bc; --c-mk: #7b4bb7; --c-ln: #c2185b; --c-cons: #00838f;
   --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -28,12 +28,12 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292; --c-cons: #4dd0e1;
   --axis: #b9c5c0; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0d1311; --surface: #141c19; --fg: #e6ece9; --muted: #8b9893; --line: #24302b;
   --accent: #3ccf9f; --up: #3ccf9f; --down: #ff7a63;
-  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292;
+  --c-account: #3ccf9f; --c-sh: #7aa2ff; --c-bh: #f0b54a; --c-spy: #7d8a84; --c-qqq: #4d5954; --c-mk: #b993f0; --c-ln: #f06292; --c-cons: #4dd0e1;
   --axis: #b9c5c0; color-scheme: dark; }
 * { box-sizing: border-box; }
 html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); }
@@ -169,7 +169,7 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
   </section>
 </main>
 <script>
-const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk", launched: "--c-ln" };
+const COLORS = { account: "--c-account", spyHunter: "--c-sh", bargainHunter: "--c-bh", spy: "--c-spy", qqq: "--c-qqq", makarios: "--c-mk", launched: "--c-ln", conservative: "--c-cons" };
 let data = null;
 // LINES SHOWN ON THE CHART: tap a row to hide or show its line; remembered on this device only
 let hidden = (() => { try { return new Set(JSON.parse(localStorage.getItem("pulse.hidden") || "[]")); } catch { return new Set(); } })();
