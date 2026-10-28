@@ -43,6 +43,8 @@ header { display: flex; justify-content: space-between; align-items: baseline; g
 h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .state { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.state.late { color: var(--down); }
+.state.late .dot { background: var(--down); }
 .state.open .dot { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 22%, transparent); }
 .periods { display: grid; grid-template-columns: repeat(11, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
 .periods button { font: 500 13px var(--sans); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 8px 0; cursor: pointer; }
@@ -679,16 +681,48 @@ document.getElementById("hint").textContent = matchMedia("(pointer: coarse)").ma
   ? "Pinch to zoom · drag sideways to pan · press to read · double-tap an axis to reset"
   : "Scroll to zoom · drag to pan · scroll on the % axis to zoom it · double-click an axis to reset";
 
+// HOW FRESH ARE THE PRICES (owner 2026-10-29: "intelligently adaptive so that drift or staleness is impossible"). Judged
+// here, on this device's clock and New York's own calendar (data.nyCalendar, the robot's), never on the prices' age
+// alone - an old price in the middle of the session once read "market closed". live: the session is open and the prices
+// are under 20 minutes old; delayed: open, older; closed: the last session's close is shown; behind: a whole session that
+// has closed is missing.
+const NY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" });
+function nyAt(t) {
+  const p = Object.fromEntries(NY_FMT.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, mins: +p.hour * 60 + +p.minute, weekend: p.weekday === "Sat" || p.weekday === "Sun" };
+}
+function freshness(nowMs, priceIso, cal) {
+  const closed = new Set((cal && cal.closed) || []), half = new Set((cal && cal.halfDays) || []);
+  const session = (d, weekend) => !weekend && !closed.has(d);
+  const shut = (d) => (half.has(d) ? 13 * 60 : 16 * 60);
+  const n = nyAt(nowMs), pt = Date.parse(priceIso);
+  const age = Math.round((nowMs - pt) / 60000);
+  if (session(n.date, n.weekend) && n.mins >= 9 * 60 + 30 && n.mins < shut(n.date))
+    return age <= 20 ? { state: "live", text: "live" } : { state: "delayed", text: `prices delayed · ${age} min`, warn: `Prices are ${age} minutes old in the middle of New York's session: the page's update has not run` };
+  // the last session that has closed: today once past its close, else the one before
+  let t = nowMs, d = n;
+  if (!(session(d.date, d.weekend) && d.mins >= shut(d.date))) {
+    for (let k = 0; k < 10; k++) { t -= 864e5; d = nyAt(t); if (session(d.date, d.weekend)) break; }
+  }
+  const p = nyAt(pt);
+  if (Number.isNaN(pt) || p.date < d.date) return { state: "behind", text: "prices behind", warn: `Prices are from ${Number.isNaN(pt) ? "an unknown time" : p.date}; New York's ${d.date} close has not reached this page` };
+  // the right session, but stopped before its close, and the page has had 40 minutes since to catch up
+  const since = d.date === n.date ? n.mins - shut(d.date) : Infinity;
+  if (p.date === d.date && p.mins < shut(d.date) - 1 && since > 40) return { state: "behind", text: "prices behind", warn: `Prices stop at ${String(Math.floor(p.mins / 60)).padStart(2, "0")}:${String(p.mins % 60).padStart(2, "0")} New York time, before ${d.date}'s close` };
+  return { state: "closed", text: "market closed" };
+}
+
 function foot() {
   // the notes under the rows are gone (owner 2026-10-27); only something that needs attention is shown: prices that
   // have stopped, the planner or the mini not updating, a book overdue
   const el = document.getElementById("foot");
-  const pt = new Date(data.priceTime);
-  const open = (Date.now() - pt.getTime()) / 60000 < 20;
-  document.getElementById("state").classList.toggle("open", open);
-  document.getElementById("stateText").textContent = open ? "live" : "market closed";
+  const f = freshness(Date.now(), data.priceTime, data.nyCalendar);
+  document.getElementById("state").classList.toggle("open", f.state === "live");
+  document.getElementById("state").classList.toggle("late", f.state === "delayed" || f.state === "behind");
+  document.getElementById("stateText").textContent = f.text;
   el.textContent = "";
   const warn = (t) => { const d = document.createElement("div"); d.className = "warn"; d.textContent = t; el.appendChild(d); };
+  if (f.warn) warn(f.warn);
   const synced = data.plannerSyncedAt ? new Date(data.plannerSyncedAt) : null;
   if (synced && (Date.now() - synced.getTime()) / 864e5 > 35) warn(`Planner last synced ${synced.toLocaleDateString(undefined, { day: "numeric", month: "short" })} — open the planner so new holdings reach this page`);
   const ss = data.strategiesSyncedAt ? new Date(data.strategiesSyncedAt) : null;
