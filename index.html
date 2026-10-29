@@ -497,19 +497,24 @@ function yearsTable() {
   const el = document.getElementById("years");
   const from = P.D[Math.max(0, Math.floor(view.a))], to = P.D[Math.min(P.n - 1, Math.ceil(view.b))];
   const lines = data.lines.filter((l) => !hidden.has(l.key));
-  const per = lines.map((l) => yearReturns(l.series, from, to));
+  // Makarios is measured from the owner's chosen start, the 15 May 2025 close (MAK_FROM_CLOSE), never from its earlier rows
+  const per = lines.map((l) => yearReturns(l.series, l.key === "makarios" && from < MAK_FROM_CLOSE ? MAK_FROM_CLOSE : from, to));
   const years = [...new Set(per.flatMap((m) => [...m.keys()]))].sort().reverse();
   const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const head = lines.map((l) => `<th title="${esc(l.name)}"><i style="background:var(${COLORS[l.key]})"></i>${esc(l.name.replace(/ [0-9a-f]{8}$/, ""))}</th>`).join("");
-  const thisYear = to.slice(0, 4);
+  const thisYear = to.slice(0, 4), notes = [];
   const body = years.map((y) => {
     const vals = per.map((m) => m.get(y));
     const best = Math.max(...vals.map((v) => (v ? +pct(v.r).replace("−", "-").replace(/[%,]/g, "") : -Infinity)));
-    const cells = vals.map((v) => !v ? `<td class="none">–</td>`
-      : `<td class="${v.r >= 0 ? "up" : "down"}${v.from ? " part" : ""}${+pct(v.r).replace("−", "-").replace(/[%,]/g, "") === best ? " best" : ""}"${v.from ? ` title="from ${fmtLong(v.from)}"` : ""}>${pct(v.r)}</td>`).join("");
+    const cells = vals.map((v, li) => {
+      if (!v) return `<td class="none">–</td>`;
+      // A PART YEAR is marked * and explained in the fine print below (owner 2026-10-29), not only by italics and a hover
+      if (v.from) notes.push(`* ${esc(lines[li].name.replace(/ [0-9a-f]{8}$/, ""))} ${y}: from the ${fmtLong(v.from)} close`);
+      return `<td class="${v.r >= 0 ? "up" : "down"}${v.from ? " part" : ""}${+pct(v.r).replace("−", "-").replace(/[%,]/g, "") === best ? " best" : ""}"${v.from ? ` title="from ${fmtLong(v.from)}"` : ""}>${pct(v.r)}${v.from ? "*" : ""}</td>`;
+    }).join("");
     return `<tr><td>${y}${y === thisYear && to.slice(5) < "12-31" ? " YTD" : ""}</td>${cells}</tr>`;
   }).join("");
-  el.innerHTML = lines.length ? `<table><thead><tr><th>Year</th>${head}</tr></thead><tbody>${body}</tbody><caption>Each calendar year's return, close to close, in the period shown. Italic: from a line's first close in the period (hover for the date). Bold: the year's best.</caption></table>`
+  el.innerHTML = lines.length ? `<table><thead><tr><th>Year</th>${head}</tr></thead><tbody>${body}</tbody><caption>Each calendar year's return, close to close, in the period shown. Bold: the year's best.${notes.length ? "<br>" + notes.join("<br>") : ""}</caption></table>`
     : `<p class="hint">Every line is hidden: tap a row to show it.</p>`;
 }
 
