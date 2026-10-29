@@ -877,12 +877,23 @@ async function loadBal() {
   renderBal();
 }
 
+// THE NAMES SHOWN (owner 2026-10-29: "rename SPY HUNTER v5 to Spy Hunter v5, MINE.BASIC Conservative to MINE.Conservative"):
+// the page's own wording, applied once as the data arrives - to each line and to the Live Model's sleeves alike, so the
+// sleeve-to-line match (driftNote) still holds. The data keeps the strategies' own names.
+function shownName(n) {
+  return String(n).replace(/^SPY HUNTER\b/, "Spy Hunter").replace(/^MINE\.BASIC Conservative( [0-9a-f]{8})?$/, "MINE.Conservative");
+}
+function shownNames(d) {
+  for (const l of d.lines || []) l.name = shownName(l.name);
+  if (d.launched && d.launched.sleeves) d.launched.sleeves = Object.fromEntries(Object.entries(d.launched.sleeves).map(([n, w]) => [shownName(n), w]));
+  return d;
+}
 async function load() {
   loadBal();
   try {
     const r = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
-    data = await r.json();
+    data = shownNames(await r.json());
     render();
   } catch (e) {
     document.getElementById("stateText").textContent = data ? "offline · showing last" : "could not load";
