@@ -74,6 +74,11 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 .foot { order: 9; }
 .legend-note { margin: -6px 2px 0; font: 12px/1.5 var(--sans); color: var(--muted); }
 .legend-note b { color: var(--fg); font-weight: 500; }
+.legend { margin: -4px 2px 0; padding: 0; list-style: none; font: 12px/1.45 var(--sans); color: var(--muted); display: grid; gap: 5px; }
+.legend li { display: grid; grid-template-columns: 76px 1fr; gap: 8px; align-items: baseline; }
+.legend .tag { font: 600 10px/1.6 var(--mono); letter-spacing: .04em; text-align: center; border-radius: 4px; padding: 0 4px; border: 1px solid currentColor; }
+.legend .tag.live { color: var(--c-account); } .legend .tag.hybrid { color: var(--c-ln); } .legend .tag.sim { color: var(--c-sh); } .legend .tag.fund { color: var(--muted); }
+.legend b { color: var(--fg); font-weight: 500; }
 .drift { margin: -8px 2px 0; font: 12px/1.5 var(--mono); color: var(--muted); }
 .drift b { color: var(--fg); font-weight: 500; }
 .drift.warn, .drift.warn b { color: var(--down); }
@@ -172,7 +177,7 @@ main > * { min-width: 0; }   /* a wide table scrolls inside its panel; a grid it
     </div></div>
     <section class="board bal" id="bal" aria-live="polite" hidden></section>
     <section class="board" id="board" aria-live="polite"></section>
-    <p class="legend-note" id="lnote" hidden></p>
+    <ul class="legend" id="legend" aria-label="What each line is" hidden></ul>
     <p class="drift" id="drift" hidden></p>
     <section class="board days" id="days" aria-label="Daily moves, last five sessions" hidden></section>
     <footer class="foot" id="foot"></footer>
@@ -324,15 +329,24 @@ function buildRows() {
   }
 }
 let rowsFor = "";
-// WHAT LIVE MODEL 1 IS MADE OF (owner 2026-10-27), from the weights the mini sends - never typed into the page
-function legendNote() {
-  const el = document.getElementById("lnote"), ln = data.launched;
-  if (!ln || !ln.sleeves) { el.hidden = true; return; }
-  const parts = Object.entries(ln.sleeves).sort((a, b) => b[1] - a[1]).map(([n, w]) => `<b>${Math.round(w * 100)}% ${n}</b>`);
-  const name = (data.lines.find((l) => l.key === "launched") || {}).name || "Live Model 1";
-  el.innerHTML = `<b>${name}</b> is ${parts.join(" and ")}, put back to that split whenever either strategy trades. ` +
-    `Simulated to ${fmtLong(ln.simTo)}` + (ln.liveFrom ? `; from ${fmtLong(ln.liveFrom)} it is your real account.` : "; not live yet.");
-  el.hidden = false;
+// WHAT EACH LINE IS (owner 2026-10-30): so a reader never wonders why "Your account" and "Live Model 1" differ - every
+// row says whether it is real money, a simulation, or a simulation that hands over to real money. Dates come from the data.
+function lineLegend() {
+  const el = document.getElementById("legend"), ln = data.launched || {};
+  const firstOf = (k) => (P && P.raw.first[k] >= 0 && P.raw.first[k] < P.n ? fmtLong(P.D[P.raw.first[k]]) : null);
+  const split = ln.sleeves ? Object.entries(ln.sleeves).sort((a, b) => b[1] - a[1]).map(([n, w]) => `${Math.round(w * 100)}% ${n}`).join(" and ") : "";
+  const say = {
+    account: ["live", "LIVE", () => `your real Interactive Brokers account, its actual daily value` + (firstOf("account") ? `, measured from the ${firstOf("account")} close` : "") + "."],
+    launched: ["hybrid", "HYBRID", () => `${split ? split + ", " : ""}simulated until ${ln.simTo ? fmtLong(ln.simTo) : "it went live"}` + (ln.liveFrom ? `, then your real account's daily moves from ${fmtLong(ln.liveFrom)}. Over long views it is almost all simulation.` : ".")],
+    spyHunter: ["sim", "SIMULATED", () => "a backtest of the strategy at the gold store's prices, then carried forward with the holdings it would have."],
+    bargainHunter: ["sim", "SIMULATED", () => "a backtest of the strategy at the gold store's prices, then carried forward with the holdings it would have."],
+    conservative: ["sim", "SIMULATED", () => "the planner's Conservative mix, backtested at the gold store's prices."],
+    makarios: ["live", "REAL", () => "Makarios's own Schwab holdings, rebuilt from its statements and priced at market (bonds and money in or out left out); measured from " + fmtLong(MAK_FROM) + "."],
+    spy: ["fund", "FUND", () => "the actual SPY fund, dividends reinvested."],
+    qqq: ["fund", "FUND", () => "the actual QQQ fund, dividends reinvested."],
+  };
+  const items = data.lines.filter((l) => say[l.key]).map((l) => { const [c, t, f] = say[l.key]; return `<li><span class="tag ${c}">${t}</span><span><b>${l.name}</b>: ${f()}</span></li>`; });
+  el.innerHTML = items.join(""); el.hidden = !items.length;
 }
 // LIVE AGAINST THE MODEL (owner 2026-10-28): since the account went live, has it kept up with the simulated split it is
 // meant to follow? The model is each sleeve's own line, weighted as sent and held between trades; it is put back to
@@ -351,7 +365,7 @@ function driftNote() {
   let model = 1, from = b;
   for (const r of [...resets, e]) { model *= legs.reduce((t, x) => t + x.w * P.raw.arr[x.k][r] / P.raw.arr[x.k][from], 0); from = r; }
   const live = acc[e] / acc[b], gap = live / model - 1;
-  el.innerHTML = `Live vs model since ${fmtDate(P.D[b])} close: your account <b>${pct(live - 1)}</b>, the ${Object.values(ln.sleeves).sort((p, q) => q - p).map((w) => Math.round(w * 100)).join("/")} model <b>${pct(model - 1)}</b> · ` +
+  el.innerHTML = `Your real account against the pure ${Object.values(ln.sleeves).sort((p, q) => q - p).map((w) => Math.round(w * 100)).join("/")} simulation, since the ${fmtDate(P.D[b])} close (any view): account <b>${pct(live - 1)}</b>, simulation <b>${pct(model - 1)}</b> · ` +
     `<b>${Math.abs(gap) < 5e-5 ? "level" : (gap > 0 ? pct(gap).slice(1) + " ahead" : pct(gap).slice(1) + " behind")}</b>`;
   el.classList.toggle("warn", Math.abs(gap) >= DRIFT_PCT);
   el.title = "Red once the account and the model are " + (DRIFT_PCT * 100) + "% apart";
@@ -456,7 +470,7 @@ function render() {
   if (!data) return;
   if (!P || P.src !== data) { prepare(); P.src = data; if (!view || !custom) view = periodView(); else view = clampView(view); }
   document.querySelectorAll("#periods button").forEach((b) => b.setAttribute("aria-pressed", String(!custom && b.dataset.p === period)));
-  buildRows(); rowsFor = ""; legendNote(); driftNote(); dailyTable();
+  buildRows(); rowsFor = ""; lineLegend(); driftNote(); dailyTable();
   schedule();
   foot();
 }
